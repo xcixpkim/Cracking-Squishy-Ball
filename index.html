@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Cracking-Squishy-Ball</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: 'Segoe UI', 'Malgun Gothic', sans-serif;
+    background: #000;
+    color: #fff; user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas { display: block; cursor: pointer; width: 100%; height: 100%; }
+  #ui {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; flex-direction: column; align-items: center;
+    padding-top: 18px; pointer-events: none;
+  }
+  #flavor { font-size: 14px; opacity: .85; margin-top: 6px; font-weight: 600; }
+  #hud {
+    position: fixed; bottom: 26px; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: center; gap: 16px;
+    padding: 0 20px;
+  }
+  #bar { width: 220px; height: 14px; background: rgba(255,255,255,.12); border-radius: 7px; overflow: hidden; }
+  #fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, #a8ff78, #78ffd6);
+    border-radius: 7px; transition: width .15s ease-out;
+  }
+  #pct { font-size: 15px; font-weight: 600; min-width: 80px; }
+  #reset {
+    padding: 10px 22px; font-size: 16px; font-weight: 700;
+    font-family: inherit; color: #3a2a55;
+    /* #fill 색상(#a8ff78 → #78ffd6) 맞춤: 황색 그래디언트 → 초록-청록 그래디언트로 변경 */
+    background: linear-gradient(180deg, #a8ff78, #78ffd6);
+    border: none; border-radius: 14px; cursor: pointer;
+    /* 그림자 색상: 갈색(#c98c3a) → 어두운 초록색(#3d9d4a)으로 변경 */
+    box-shadow: 0 4px 0 #3d9d4a, 0 6px 14px rgba(0,0,0,.35);
+    transition: transform .08s, box-shadow .08s;
+  }
+  #reset:active { 
+    /* 클릭 시 그림자 색상도 동일하게 변경 */
+    transform: translateY(3px); 
+    box-shadow: 0 1px 0 #3d9d4a, 0 3px 8px rgba(0,0,0,.35); 
+  }
+  
+  /* ===== 반응형 설정 ===== */
+  /* 모바일 (768px 이하) */
+  @media (max-width: 768px) {
+    #flavor { font-size: 12px; }
+    #hud {
+      bottom: 16px; gap: 8px; flex-wrap: wrap;
+    }
+    #bar { width: 160px; height: 12px; }
+    #pct { font-size: 13px; min-width: 70px; }
+    #reset {
+      padding: 8px 16px; font-size: 14px;
+      /* 그림자 색상: 갈색 → 어두운 초록색으로 변경 */
+      box-shadow: 0 3px 0 #3d9d4a, 0 4px 10px rgba(0,0,0,.35);
+    }
+  }
+  
+  /* 태블릿 (769px ~ 1024px) */
+  @media (min-width: 769px) and (max-width: 1024px) {
+    #flavor { font-size: 13px; }
+    #hud {
+      bottom: 20px; gap: 12px;
+    }
+    #bar { width: 180px; height: 13px; }
+    #pct { font-size: 14px; min-width: 75px; }
+    #reset {
+      padding: 9px 20px; font-size: 15px;
+      /* 그림자 색상: 갈색 → 어두운 초록색으로 변경 */
+      box-shadow: 0 3px 0 #3d9d4a, 0 5px 12px rgba(0,0,0,.35);
+    }
+  }
+  
+  /* PC (1025px 이상) */
+  @media (min-width: 1025px) {
+    #flavor { font-size: 14px; }
+    #hud {
+      bottom: 26px; gap: 16px;
+    }
+    #bar { width: 220px; height: 14px; }
+    #pct { font-size: 15px; min-width: 80px; }
+    #reset {
+      padding: 10px 22px; font-size: 16px;
+      box-shadow: 0 4px 0 #3d9d4a, 0 6px 14px rgba(0,0,0,.35);
+    }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="ui">
+  <div id="flavor"></div>
+</div>
+<div id="hud">
+  <div id="bar"><div id="fill"></div></div>
+  <div id="pct">0%</div>
+  <button id="reset">🔄</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const fillEl = document.getElementById('fill');
+const pctEl = document.getElementById('pct');
+
+// ================= 기본 씬 =================
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.getElementById('app').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.5, 6.8);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = false;
+
+// 기기별 카메라 및 컨트롤 설정
+const isMobile = window.innerWidth <= 768;
+const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
+if (isMobile) {
+  // 모바일: 더 멀리서 보기
+  camera.position.set(0, 1.5, 9.5);
+  controls.minDistance = 6.5;
+  controls.maxDistance = 18;
+  controls.rotateSpeed = 0.8;
+} else if (isTablet) {
+  // 태블릿: 중간 정도
+  camera.position.set(0, 1.5, 8.2);
+  controls.minDistance = 5.5;
+  controls.maxDistance = 16;
+  controls.rotateSpeed = 0.8;
+} else {
+  // PC: 기존 설정
+  controls.minDistance = 3.5;
+  controls.maxDistance = 14;
+  controls.rotateSpeed = 1.0;
+}
+
+controls.maxPolarAngle = Math.PI * 0.62;
+controls.target.set(0, 0, 0);
+
+scene.add(new THREE.AmbientLight(0xbbaaff, 0.25));
+const key = new THREE.DirectionalLight(0xffffff, 1.4);
+key.position.set(4, 7, 5);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.camera.left = -6; key.shadow.camera.right = 6;
+key.shadow.camera.top = 6; key.shadow.camera.bottom = -6;
+scene.add(key);
+const rim = new THREE.DirectionalLight(0xff9ad5, 0.5);
+rim.position.set(-5, 3, -4);
+scene.add(rim);
+
+const FLOOR_Y = -2.3;
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(4, 48),
+  new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.95 })
+  // 기존 0x32265a(보라색)에서 0x000000(검정색)으로 변경
+  // 기존 CircleGeometry(10, 48)에서 CircleGeometry(4, 48)으로 변경
+);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = FLOOR_Y;
+floor.receiveShadow = true;
+floor.visible = false;
+// 바닥 메쉬 숨김
+scene.add(floor);
+
+// ================= 사운드: 둔탁한 "뚜둑" =================
+let audio = null, noiseBuf = null, lastSnd = 0, lastSoft = 0;
+function initAudio() {
+  if (audio) { if (audio.state === 'suspended') audio.resume(); return; }
+  audio = new (window.AudioContext || window.webkitAudioContext)();
+  const len = audio.sampleRate * 0.3;
+  noiseBuf = audio.createBuffer(1, len, audio.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+}
+function snapSound(power) {
+  if (!audio) return;
+  const now = performance.now();
+  if (now - lastSnd < 50) return;
+  lastSnd = now;
+  const t = audio.currentTime;
+  const out = audio.createGain();
+  out.gain.value = Math.min(0.9, 0.35 + power * 0.25);
+  out.connect(audio.destination);
+  const bursts = 1 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < bursts; i++) {
+    const src = audio.createBufferSource();
+    src.buffer = noiseBuf;
+    src.playbackRate.value = 0.45 + Math.random() * 0.5 - power * 0.08;
+    const lp = audio.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 550 + Math.random() * 750 - power * 100;
+    lp.Q.value = 1.1;
+    const g = audio.createGain();
+    const st = t + i * (0.025 + Math.random() * 0.03);
+    g.gain.setValueAtTime(0.0001, st);
+    g.gain.linearRampToValueAtTime(0.85, st + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.001, st + 0.06 + Math.random() * 0.05);
+    src.connect(lp); lp.connect(g); g.connect(out);
+    src.start(st); src.stop(st + 0.18);
+  }
+  const o = audio.createOscillator();
+  o.type = 'sine';
+  const f0 = 110 + Math.random() * 90 - power * 15;
+  o.frequency.setValueAtTime(Math.max(70, f0), t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(45, f0 * 0.45), t + 0.07);
+  const og = audio.createGain();
+  og.gain.setValueAtTime(0.55, t);
+  og.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+  o.connect(og); og.connect(out);
+  o.start(t); o.stop(t + 0.11);
+  if (Math.random() < 0.6) {
+    const o2 = audio.createOscillator();
+    o2.type = 'triangle';
+    o2.frequency.setValueAtTime(480 + Math.random() * 280, t + 0.01);
+    o2.frequency.exponentialRampToValueAtTime(210, t + 0.05);
+    const g2 = audio.createGain();
+    g2.gain.setValueAtTime(0.13, t + 0.01);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    o2.connect(g2); g2.connect(out);
+    o2.start(t + 0.01); o2.stop(t + 0.08);
+  }
+}
+function softCrunch() {
+  if (!audio) return;
+  const now = performance.now();
+  if (now - lastSoft < 150) return;
+  lastSoft = now;
+  const t = audio.currentTime;
+  const src = audio.createBufferSource();
+  src.buffer = noiseBuf;
+  src.playbackRate.value = 0.35 + Math.random() * 0.35;
+  const lp = audio.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 420 + Math.random() * 380;
+  const g = audio.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(0.12, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  src.connect(lp); lp.connect(g); g.connect(audio.destination);
+  src.start(t); src.stop(t + 0.15);
+}
+
+// ================= 치수 =================
+const R = 1.75;
+const OUT_R = 1.02, IN_R = 0.975, CLAY_R = 0.965;   // 얇은 왁스 코팅
+const MAX_DENT = R * 0.26;
+const P_CAP = 0.8;
+
+const PALETTE = { name: '청사과 왁뿌볼 🍏', colors: ['#cdeec0', '#e2f7d4', '#f4fdea', '#aede9d'], clay: '#84e34f' };
+let palette;
+const ballGroup = new THREE.Group();
+scene.add(ballGroup);
+function rnd(a, b) { return a + Math.random() * (b - a); }
+const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _q = new THREE.Quaternion();
+
+// ================= 구 형태 =================
+function potRad(d) {   // 완전한 구: 모든 방향에서 반지름이 1.0으로 일정
+  return 1.0;
+}
+
+// ================= 점토 소성 변형 필드 P(θ,φ) =================
+const TEX_W = 192, TEX_H = 96;
+const Pfield = new Float32Array(TEX_W * TEX_H);
+const texelDir = new Float32Array(TEX_W * TEX_H * 3);
+for (let ty = 0; ty < TEX_H; ty++) {
+  const theta = ((ty + 0.5) / TEX_H) * Math.PI;
+  for (let tx = 0; tx < TEX_W; tx++) {
+    const phi = (((tx + 0.5) / TEX_W) - 0.5) * Math.PI * 2;
+    const i = ty * TEX_W + tx;
+    texelDir[i * 3] = Math.sin(theta) * Math.cos(phi);
+    texelDir[i * 3 + 1] = Math.cos(theta);
+    texelDir[i * 3 + 2] = Math.sin(theta) * Math.sin(phi);
+  }
+}
+function paintP(dir, amount, sigma) {
+  const cosCut = Math.cos(Math.min(1.2, sigma * 3));
+  for (let i = 0; i < TEX_W * TEX_H; i++) {
+    const dot = texelDir[i * 3] * dir.x + texelDir[i * 3 + 1] * dir.y + texelDir[i * 3 + 2] * dir.z;
+    if (dot < cosCut) continue;
+    const a = Math.acos(Math.min(1, dot));
+    const g = Math.exp(-(a * a) / (2 * sigma * sigma));
+    Pfield[i] = Math.min(P_CAP, Pfield[i] + amount * g);
+  }
+}
+function sampleField(field, W, H, dir) {
+  const u = Math.atan2(dir.z, dir.x) / (Math.PI * 2) + 0.5;
+  const v = Math.acos(THREE.MathUtils.clamp(dir.y, -1, 1)) / Math.PI;
+  const fx = u * W - 0.5, fy = v * H - 0.5;
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const ax = fx - x0, ay = fy - y0;
+  const at = (x, y) => {
+    const wx = ((x % W) + W) % W;
+    const wy = Math.max(0, Math.min(H - 1, y));
+    return field[wy * W + wx];
+  };
+  return (at(x0, y0) * (1 - ax) + at(x0 + 1, y0) * ax) * (1 - ay)
+       + (at(x0, y0 + 1) * (1 - ax) + at(x0 + 1, y0 + 1) * ax) * ay;
+}
+const sampleP = dir => sampleField(Pfield, TEX_W, TEX_H, dir);
+
+// ================= 주머니 함몰 필드 =================
+const BAG_W = 128, BAG_H = 64;
+const bagSinkF = new Float32Array(BAG_W * BAG_H);
+const bagTexelDir = new Float32Array(BAG_W * BAG_H * 3);
+for (let ty = 0; ty < BAG_H; ty++) {
+  const theta = ((ty + 0.5) / BAG_H) * Math.PI;
+  for (let tx = 0; tx < BAG_W; tx++) {
+    const phi = (((tx + 0.5) / BAG_W) - 0.5) * Math.PI * 2;
+    const i = ty * BAG_W + tx;
+    bagTexelDir[i * 3] = Math.sin(theta) * Math.cos(phi);
+    bagTexelDir[i * 3 + 1] = Math.cos(theta);
+    bagTexelDir[i * 3 + 2] = Math.sin(theta) * Math.sin(phi);
+  }
+}
+function paintBagSink(dir, depth, sigma) {
+  const cosCut = Math.cos(Math.min(1.3, sigma * 3));
+  for (let i = 0; i < BAG_W * BAG_H; i++) {
+    const dot = bagTexelDir[i * 3] * dir.x + bagTexelDir[i * 3 + 1] * dir.y + bagTexelDir[i * 3 + 2] * dir.z;
+    if (dot < cosCut) continue;
+    const a = Math.acos(Math.min(1, dot));
+    const g = Math.exp(-(a * a) / (2 * sigma * sigma));
+    bagSinkF[i] = Math.max(bagSinkF[i], depth * g);
+  }
+}
+const sampleBagSink = dir => sampleField(bagSinkF, BAG_W, BAG_H, dir);
+
+// ================= 기반 시뮬레이션 격자 (화면엔 안 보임) =================
+let vertDirs = [], faceVids = [], faceDirs = [], faceNeighbors = [], edges = [], totalFaces = 0;
+let vertOuter = [], vertInner = [];
+function initBase() {
+  const ico = new THREE.IcosahedronGeometry(1, 4);
+  const p = ico.getAttribute('position');
+  totalFaces = p.count / 3;
+  const vmap = new Map();
+  const vidOf = new Uint32Array(p.count);
+  for (let i = 0; i < p.count; i++) {
+    const key = p.getX(i).toFixed(4) + ',' + p.getY(i).toFixed(4) + ',' + p.getZ(i).toFixed(4);
+    let id = vmap.get(key);
+    if (id === undefined) {
+      id = vertDirs.length;
+      vmap.set(key, id);
+      vertDirs.push(new THREE.Vector3(p.getX(i), p.getY(i), p.getZ(i)).normalize());
+    }
+    vidOf[i] = id;
+  }
+  const emap = new Map();
+  for (let f = 0; f < totalFaces; f++) {
+    const a = vidOf[f * 3], b = vidOf[f * 3 + 1], c = vidOf[f * 3 + 2];
+    faceVids.push([a, b, c]);
+    faceDirs.push(vertDirs[a].clone().add(vertDirs[b]).add(vertDirs[c]).normalize());
+    faceNeighbors.push([-1, -1, -1]);
+    const vv = [a, b, c];
+    for (let e = 0; e < 3; e++) {
+      const i = vv[e], j = vv[(e + 1) % 3];
+      const ekey = i < j ? i + '_' + j : j + '_' + i;
+      const ent = emap.get(ekey);
+      if (ent) {
+        faceNeighbors[f][e] = ent.f; faceNeighbors[ent.f][ent.e] = f;
+        edges.push({ fa: ent.f, fb: f, va: i, vb: j });
+      }
+      else emap.set(ekey, { f, e });
+    }
+  }
+  ico.dispose();
+}
+function rebuildSurfacePositions() {
+  vertOuter = []; vertInner = [];
+  for (const d of vertDirs) {
+    const pr = potRad(d);
+    vertOuter.push(d.clone().multiplyScalar(R * OUT_R * pr));
+    vertInner.push(d.clone().multiplyScalar(R * IN_R * pr));
+  }
+}
+
+// ================= 마블 색 =================
+let vidColor;
+function noise3(v, s, o) {
+  return Math.sin(v.x * s + o) + Math.sin(v.y * s * 1.31 + o * 2.1) + Math.sin(v.z * s * 0.83 + o * 4.7);
+}
+function buildMarble() {
+  vidColor = new Float32Array(vertDirs.length * 3);
+  const c = new THREE.Color(), white = new THREE.Color('#ffffff');
+  for (let i = 0; i < vertDirs.length; i++) {
+    const d = vertDirs[i];
+    let best = -1e9, bi = 0;
+    for (let k = 0; k < palette.colors.length; k++) {
+      const w = noise3(d, 2.1, k * 7.3) + 0.55 * noise3(d, 4.6, k * 3.7);
+      if (w > best) { best = w; bi = k; }
+    }
+    c.set(palette.colors[bi]);
+    c.lerp(white, 0.18 + 0.1 * Math.sin(noise3(d, 8.2, 1.1)));
+    vidColor[i * 3] = c.r; vidColor[i * 3 + 1] = c.g; vidColor[i * 3 + 2] = c.b;
+  }
+}
+
+// ================= 매끈한 통짜 셸 (스무스 셰이딩 - 분할 안 보임) =================
+let intact;                 // Uint8Array per face
+let intactCount = 0, finished = false;
+let shellGeo, shellMesh, shellColAttr, rimMesh = null;
+
+function initShell() {
+  shellGeo = new THREE.BufferGeometry();
+  shellGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertDirs.length * 3), 3));
+  shellColAttr = new THREE.BufferAttribute(new Float32Array(vertDirs.length * 3), 3);
+  shellGeo.setAttribute('color', shellColAttr);
+  const mat = new THREE.MeshPhysicalMaterial({
+    vertexColors: true,
+    roughness: 0.45, metalness: 0,
+    clearcoat: 0.6, clearcoatRoughness: 0.3,
+    sheen: 0.6, sheenColor: new THREE.Color('#ffffff'),
+    envMapIntensity: 0.7,
+  });
+  shellMesh = new THREE.Mesh(shellGeo, mat);
+  shellMesh.castShadow = true;
+  ballGroup.add(shellMesh);
+}
+function refreshShellGeometry() {   // 리셋 시: 좌표/색 갱신
+  const pa = shellGeo.getAttribute('position');
+  for (let i = 0; i < vertDirs.length; i++) pa.setXYZ(i, vertOuter[i].x, vertOuter[i].y, vertOuter[i].z);
+  pa.needsUpdate = true;
+  shellColAttr.array.set(vidColor);
+  shellColAttr.needsUpdate = true;
+  rebuildShellIndex();
+}
+function rebuildShellIndex() {
+  const idx = [];
+  for (let f = 0; f < totalFaces; f++) {
+    if (!intact[f]) continue;
+    idx.push(faceVids[f][0], faceVids[f][1], faceVids[f][2]);
+  }
+  shellGeo.setIndex(idx);
+  shellGeo.computeVertexNormals();   // 인덱스 공유 → 부드러운 연속 표면
+  rebuildRim();
+}
+// 구멍 둘레의 왁스 두께 단면 (하얗게 일어난 파단면)
+function rebuildRim() {
+  if (rimMesh) {
+    ballGroup.remove(rimMesh);
+    rimMesh.geometry.dispose();
+    rimMesh.material.dispose();
+    rimMesh = null;
+  }
+  const pos = [], col = [];
+  for (const e of edges) {
+    const ia = intact[e.fa], ib = intact[e.fb];
+    if (ia === ib) continue;
+    const i = e.va, j = e.vb;
+    const Oi = vertOuter[i], Oj = vertOuter[j], Ii = vertInner[i], Ij = vertInner[j];
+    pos.push(Oi.x, Oi.y, Oi.z, Oj.x, Oj.y, Oj.z, Ij.x, Ij.y, Ij.z);
+    pos.push(Oi.x, Oi.y, Oi.z, Ij.x, Ij.y, Ij.z, Ii.x, Ii.y, Ii.z);
+    for (let n = 0; n < 6; n++) col.push(0.99, 0.985, 0.95);   // 파단면 백화
+  }
+  if (!pos.length) return;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  rimMesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.85, side: THREE.DoubleSide, envMapIntensity: 0.3,
+  }));
+  ballGroup.add(rimMesh);
+}
+function whitenShellVids(vids, amt) {
+  const arr = shellColAttr.array;
+  for (const vid of vids) {
+    arr[vid * 3]     += (0.995 - arr[vid * 3]) * amt;
+    arr[vid * 3 + 1] += (0.99 - arr[vid * 3 + 1]) * amt;
+    arr[vid * 3 + 2] += (0.965 - arr[vid * 3 + 2]) * amt;
+  }
+  shellColAttr.needsUpdate = true;
+}
+
+// ================= 떨어져 나온 왁스 조각 (터치 시 즉석 생성) =================
+let chunks = new Map(), nextChunkId = 1;
+
+function makeChunkMaterial() {
+  return new THREE.MeshPhysicalMaterial({
+    vertexColors: true,
+    flatShading: true,         // 파단된 조각은 각진 단면
+    side: THREE.DoubleSide,
+    roughness: 0.7, metalness: 0,
+    clearcoat: 0.2, clearcoatRoughness: 0.5,
+    envMapIntensity: 0.5,
+  });
+}
+function buildChunkObject(faceList) {
+  const faceSet = new Set(faceList);
+  const pos = [], col = [], slotVid = [];
+  const pushV = (p, vid) => {
+    pos.push(p.x, p.y, p.z);
+    col.push(vidColor[vid * 3], vidColor[vid * 3 + 1], vidColor[vid * 3 + 2]);
+    slotVid.push(vid);
+  };
+  const boundaryVids = new Set();
+  for (const f of faceList) {
+    const [a, b, c] = faceVids[f];
+    pushV(vertOuter[a], a); pushV(vertOuter[b], b); pushV(vertOuter[c], c);
+    pushV(vertInner[c], c); pushV(vertInner[b], b); pushV(vertInner[a], a);
+    const vv = [a, b, c];
+    for (let e = 0; e < 3; e++) {
+      const nb = faceNeighbors[f][e];
+      if (nb >= 0 && faceSet.has(nb)) continue;
+      const i = vv[e], j = vv[(e + 1) % 3];
+      boundaryVids.add(i); boundaryVids.add(j);
+      pushV(vertOuter[i], i); pushV(vertOuter[j], j); pushV(vertInner[j], j);
+      pushV(vertOuter[i], i); pushV(vertInner[j], j); pushV(vertInner[i], i);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, makeChunkMaterial());
+  mesh.castShadow = true;
+  const slotMap = new Map();
+  for (let s = 0; s < slotVid.length; s++) {
+    let arr = slotMap.get(slotVid[s]);
+    if (!arr) { arr = []; slotMap.set(slotVid[s], arr); }
+    arr.push(s);
+  }
+  const dir = new THREE.Vector3();
+  for (const f of faceList) dir.add(faceDirs[f]);
+  dir.normalize();
+  let angRad = 0;
+  for (const f of faceList) angRad = Math.max(angRad, dir.angleTo(faceDirs[f]));
+  const chunk = {
+    id: nextChunkId++,
+    faces: faceList, dir, angRad: Math.max(0.06, angRad),
+    mesh, slotMap, boundaryVids, grind: 0,
+    vel: new THREE.Vector3(),
+    targetPos: new THREE.Vector3(), targetQ: new THREE.Quaternion(),
+  };
+  mesh.userData.chunk = chunk;
+  chunks.set(chunk.id, chunk);
+  ballGroup.add(mesh);
+  return chunk;
+}
+function whitenVids(chunk, vids, amt) {
+  const colAttr = chunk.mesh.geometry.getAttribute('color');
+  const arr = colAttr.array;
+  for (const vid of vids) {
+    const slots = chunk.slotMap.get(vid);
+    if (!slots) continue;
+    for (const s of slots) {
+      arr[s * 3]     += (0.995 - arr[s * 3]) * amt;
+      arr[s * 3 + 1] += (0.99 - arr[s * 3 + 1]) * amt;
+      arr[s * 3 + 2] += (0.965 - arr[s * 3 + 2]) * amt;
+    }
+  }
+  colAttr.needsUpdate = true;
+}
+const whitenAll = (chunk, amt) => whitenVids(chunk, chunk.slotMap.keys(), amt);
+
+function setSinkTarget(chunk, jitter) {
+  // 조각은 점토에 붙은 채로 내려앉음: 안쪽면이 점토 표면에 항상 밀착
+  const pr = potRad(chunk.dir);
+  const clayLocal = R * CLAY_R * pr - sampleP(chunk.dir) * MAX_DENT * 0.95;
+  const delta = Math.max(0.004 * R, R * IN_R * pr - clayLocal);
+  chunk.targetPos.copy(chunk.dir).multiplyScalar(-delta);
+  if (jitter) {
+    _v2.set(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)).normalize().multiplyScalar(rnd(0, 0.004) * R);
+    chunk.targetPos.add(_v2);
+  }
+  paintBagSink(chunk.dir, delta * 0.9, chunk.angRad * 1.25);
+  bagPermDirty = true;
+}
+
+// ================= 동적 파괴: 터치한 곳에서 일관된 균열 생성 =================
+function fractureAt(hitDir, forceSmall = false) {
+  // 1) 터치 지점 둘레의 일정한 패치 선정 (반경 고정, 강제일 때 더 크게)
+  const radius = forceSmall ? 0.18 : 0.28;
+  const patch = [];
+  for (let f = 0; f < totalFaces; f++) {
+    if (!intact[f]) continue;
+    const a = faceDirs[f].angleTo(hitDir);
+    if (a < radius) patch.push(f);
+  }
+  // 최소 1개 이상 있으면 부수기 (강제 부수기는 작은 범위라도 가능)
+  if (patch.length < (forceSmall ? 1 : 3)) return false;
+
+  // 1-1) 인접 면 추가 (경계에 남는 고아 조각 방지)
+  const patchSet = new Set(patch);
+  const toAdd = [];
+  for (const f of patch) {
+    for (let e = 0; e < 3; e++) {
+      const nb = faceNeighbors[f][e];
+      if (nb >= 0 && intact[nb] && !patchSet.has(nb)) {
+        toAdd.push(nb);
+      }
+    }
+  }
+  // 인접 면의 절반 정도만 추가 (자연스러운 깨짐 유지)
+  for (let i = 0; i < Math.floor(toAdd.length * 0.5); i++) {
+    if (Math.random() < 0.6) {  // 60% 확률
+      patchSet.add(toAdd[i]);
+    }
+  }
+  const finalPatch = Array.from(patchSet);
+
+  // 2) 육각형 모양의 일관된 6개 방향 생성 (정삼각형 6개 합친 육각형)
+  const up = new THREE.Vector3(0, 1, 0);
+  let right = new THREE.Vector3();
+  right.crossVectors(hitDir, up);
+  if (right.length() < 0.5) {
+    right.set(1, 0, 0);
+  }
+  right.normalize();
+  const forward = new THREE.Vector3();
+  forward.crossVectors(right, hitDir).normalize();
+  
+  const seeds = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    const s = new THREE.Vector3();
+    s.addScaledVector(right, Math.cos(angle) * 0.7);
+    s.addScaledVector(forward, Math.sin(angle) * 0.7);
+    s.addScaledVector(hitDir, 0.3);
+    s.normalize();
+    seeds.push(s);
+  }
+
+  // 3) 6개 그룹으로 일관된 보로노이 분할
+  const groups = seeds.map(() => []);
+  for (const f of finalPatch) {
+    let bd = 1e9, bg = 0;
+    for (let s = 0; s < 6; s++) {
+      const d = faceDirs[f].angleTo(seeds[s]);
+      if (bd > d) { bd = d; bg = s; }
+    }
+    groups[bg].push(f);
+  }
+
+  // 4) 셸에서 떼어내고 조각으로 (작은 초기 속도 = 톡 튀어나오는 물리감)
+  const rimVids = new Set();
+  for (const f of finalPatch) {
+    intact[f] = 0;
+    intactCount--;
+    for (const vid of faceVids[f]) rimVids.add(vid);
+  }
+  for (const g of groups) {
+    if (!g.length) continue;
+    const c = buildChunkObject(g);
+    whitenAll(c, 0.2);
+    whitenVids(c, c.boundaryVids, 0.5);
+    // 점토에 붙어 있으므로 기울기는 아주 살짝만
+    _v2.crossVectors(c.dir, new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1))).normalize();
+    c.targetQ.setFromAxisAngle(_v2, rnd(0.015, 0.06) * (Math.random() < 0.5 ? -1 : 1));
+    // 깨질 때 미세하게 들썩이고 곧장 점토에 밀착
+    c.vel.copy(c.dir).multiplyScalar(rnd(0.1, 0.35))
+      .addScaledVector(new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)), 0.08);
+    setSinkTarget(c, true);
+  }
+  // 5) 점토 함몰(찰흙: 영구) + 셸 구멍 가장자리 백화 + 단면 재생성
+  paintP(hitDir, 0.16, Math.max(0.12, radius));
+  clayDirty = true;
+  whitenShellVids(rimVids, 0.45);
+  rebuildShellIndex();
+  snapSound(Math.min(2, finalPatch.length / 30));
+  updateHud();
+  return true;
+}
+
+// 이미 부서진 조각 갈기: 더 깊이 + 큰 조각은 또 무작위로 쪼개짐
+function grindChunk(chunk, dt) {
+  chunk.grind += dt;
+  if (Math.random() < dt * 1.5) {
+    _v2.crossVectors(chunk.dir, new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1))).normalize();
+    _q.setFromAxisAngle(_v2, rnd(-0.05, 0.05));
+    chunk.targetQ.premultiply(_q);
+    whitenAll(chunk, 0.06);
+  }
+  setSinkTarget(chunk, false);
+  if (chunk.faces.length > 30 && chunk.grind > 0.4 && Math.random() < dt * 2.5) splitChunk(chunk);
+}
+function splitChunk(chunk) {
+  const k = chunk.faces.length > 70 ? 3 : 2;
+  const seeds = [];
+  for (let i = 0; i < k; i++) seeds.push(faceDirs[chunk.faces[Math.floor(Math.random() * chunk.faces.length)]]);
+  const groups = seeds.map(() => []);
+  for (const f of chunk.faces) {
+    let bd = 1e9, bg = 0;
+    for (let s = 0; s < k; s++) {
+      const d = faceDirs[f].angleTo(seeds[s]) * rnd(0.9, 1.1);
+      if (bd > d) { bd = d; bg = s; }
+    }
+    groups[bg].push(f);
+  }
+  const fromPos = chunk.mesh.position.clone();
+  const fromQ = chunk.mesh.quaternion.clone();
+  ballGroup.remove(chunk.mesh);
+  chunk.mesh.geometry.dispose();
+  chunk.mesh.material.dispose();
+  chunks.delete(chunk.id);
+  for (const g of groups) {
+    if (!g.length) continue;
+    const nc = buildChunkObject(g);
+    nc.mesh.position.copy(fromPos);
+    nc.mesh.quaternion.copy(fromQ);
+    whitenAll(nc, 0.35);
+    whitenVids(nc, nc.boundaryVids, 0.5);
+    _v2.crossVectors(nc.dir, new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1))).normalize();
+    nc.targetQ.copy(fromQ);
+    _q.setFromAxisAngle(_v2, rnd(0.02, 0.07) * (Math.random() < 0.5 ? -1 : 1));
+    nc.targetQ.premultiply(_q);
+    nc.vel.copy(nc.dir).multiplyScalar(rnd(0.05, 0.2));
+    setSinkTarget(nc, true);
+  }
+  snapSound(1.2);
+}
+
+function updateHud() {
+  let pct = Math.min(100, Math.round(((totalFaces - intactCount) / totalFaces) * 100));
+  fillEl.style.width = pct + '%';
+  pctEl.textContent = pct + '%';
+  
+  // 95% 이상이면 남은 조각들 자동 부수기
+  if (pct >= 95 && !finished) {
+    for (let f = 0; f < totalFaces; f++) {
+      if (intact[f]) {
+        intact[f] = 0;
+        intactCount--;
+      }
+    }
+    rebuildShellIndex();
+    fillEl.style.width = '100%';
+    pctEl.textContent = '100%';
+    pct = 100;
+  }
+  
+  if (pct >= 100 && !finished) {
+    finished = true;
+  }
+}
+
+// ================= 점토 (소성체) =================
+const claySegs = { w: 96, h: 64 };
+const clayGeo = new THREE.SphereGeometry(1, claySegs.w, claySegs.h);
+const clayDirsArr = [];
+{
+  const p = clayGeo.getAttribute('position');
+  for (let i = 0; i < p.count; i++) clayDirsArr.push(new THREE.Vector3(p.getX(i), p.getY(i), p.getZ(i)).normalize());
+}
+const clay = new THREE.Mesh(clayGeo, new THREE.MeshStandardMaterial({ color: 0xffd94d, roughness: 1, envMapIntensity: 0.25 }));
+clay.castShadow = true;
+ballGroup.add(clay);
+let clayDirty = false;
+function updateClay() {
+  const p = clayGeo.getAttribute('position');
+  for (let i = 0; i < p.count; i++) {
+    const d = clayDirsArr[i];
+    const r2 = R * CLAY_R * potRad(d) - sampleP(d) * MAX_DENT * 0.95;
+    p.setXYZ(i, d.x * r2, d.y * r2, d.z * r2);
+  }
+  p.needsUpdate = true;
+  clayGeo.computeVertexNormals();
+  clayDirty = false;
+}
+
+// ================= 고무주머니 (왁스를 따라 쪼그라듦) =================
+const bagMat = new THREE.MeshPhysicalMaterial({
+  color: 0xffffff, transparent: true, opacity: 0.15,
+  roughness: 0.06, clearcoat: 1, clearcoatRoughness: 0.05,
+  envMapIntensity: 1.4, side: THREE.DoubleSide, depthWrite: false,
+});
+const bagGeo = new THREE.SphereGeometry(1, 56, 42);
+const bagDirsArr = [];
+{
+  const p = bagGeo.getAttribute('position');
+  for (let i = 0; i < p.count; i++) bagDirsArr.push(new THREE.Vector3(p.getX(i), p.getY(i), p.getZ(i)).normalize());
+}
+const bag = new THREE.Mesh(bagGeo, bagMat);
+bag.renderOrder = 2;
+ballGroup.add(bag);
+let bagPermDirty = false;
+
+let bagDent = 0, bagDentV = 0;
+function gauss(x) { return Math.exp(-x * x * 3.2); }
+function updateBag() {
+  const shrink = 1 - 0.05 * ((totalFaces - intactCount) / totalFaces);
+  const bp = bagGeo.getAttribute('position');
+  for (let i = 0; i < bp.count; i++) {
+    const d = bagDirsArr[i];
+    const s = sampleBagSink(d);
+    let r2 = R * 1.06 * potRad(d) * shrink - s * 0.95;
+    if (s > 0.01) r2 -= s * 0.12 * Math.sin(noise3(d, 22, 3.3) * 2.0);   // 꺼진 곳 주변 비닐 주름
+    if (Math.abs(bagDent) > 1e-4 && hitDirNow) {
+      const a = d.angleTo(hitDirNow);
+      r2 -= bagDent * gauss(a / 0.8 * 1.7);
+    }
+    bp.setXYZ(i, d.x * r2, d.y * r2, d.z * r2);
+  }
+  bp.needsUpdate = true;
+  bagGeo.computeVertexNormals();
+}
+
+// ================= 리셋 =================
+function clearChunks() {
+  for (const c of chunks.values()) {
+    ballGroup.remove(c.mesh);
+    c.mesh.geometry.dispose();
+    c.mesh.material.dispose();
+  }
+  chunks.clear();
+}
+function buildBall() {
+  palette = PALETTE;
+  clay.material.color.set(palette.clay);   // 왁스와 구별되는 밝은 점토색
+  finished = false;
+  rebuildSurfacePositions();
+  Pfield.fill(0);
+  bagSinkF.fill(0);
+  clearChunks();
+  intact = new Uint8Array(totalFaces).fill(1);
+  intactCount = totalFaces;
+  nextChunkId = 1;
+  buildMarble();
+  refreshShellGeometry();
+  updateClay();
+  updateBag();
+  updateHud();
+}
+
+// ================= 입력 =================
+let crushing = false, hitDirNow = null;
+let crushStartTime = 0;   // 누르기 시작한 시간
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+function raySphere(e) {
+  pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const o = raycaster.ray.origin, d = raycaster.ray.direction;
+  const b = o.dot(d);
+  const c = o.lengthSq() - (R * 1.35) ** 2;  // 레이캐스팅 범위 확대 (1.18 → 1.35)
+  const disc = b * b - c;
+  if (disc < 0) return null;
+  const t = -b - Math.sqrt(disc);
+  if (t < 0) return null;
+  return o.clone().addScaledVector(d, t).normalize();
+}
+renderer.domElement.addEventListener('pointerdown', e => {
+  initAudio();
+  const dir = raySphere(e);
+  if (dir) {
+    crushing = true;
+    hitDirNow = dir;
+    crushStartTime = performance.now();   // 누르기 시작 시간 기록
+    controls.enabled = false;
+    fractureAt(dir);
+  }
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  if (!crushing) return;
+  const dir = raySphere(e);
+  if (dir) { 
+    hitDirNow = dir; 
+    // 움직일 때도 occasionally 클릭 판정 (떠있는 조각들 부수기)
+    if (Math.random() < 0.3) {
+      fractureAt(dir, false);
+    }
+  }
+});
+window.addEventListener('pointerup', () => {
+  crushing = false;
+  hitDirNow = null;
+  controls.enabled = true;
+});
+document.getElementById('reset').addEventListener('click', () => {
+  initAudio();
+  buildBall();
+});
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  
+  // 반응형 카메라/컨트롤 조정
+  const newIsMobile = window.innerWidth <= 768;
+  const newIsTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
+  
+  if (newIsMobile) {
+    camera.position.set(0, 1.5, 9.5);
+    controls.minDistance = 6.5;
+    controls.maxDistance = 18;
+    controls.rotateSpeed = 0.8;
+  } else if (newIsTablet) {
+    camera.position.set(0, 1.5, 8.2);
+    controls.minDistance = 5.5;
+    controls.maxDistance = 16;
+    controls.rotateSpeed = 0.8;
+  } else {
+    camera.position.set(0, 1.5, 6.8);
+    controls.minDistance = 3.5;
+    controls.maxDistance = 14;
+    controls.rotateSpeed = 1.0;
+  }
+});
+
+// 모바일 화면 방향 변화 감지
+window.addEventListener('orientationchange', () => {
+  setTimeout(() => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    
+    // 반응형 카메라/컨트롤 조정
+    const newIsMobile = window.innerWidth <= 768;
+    const newIsTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
+    
+    if (newIsMobile) {
+      camera.position.set(0, 1.5, 9.5);
+      controls.minDistance = 6.5;
+      controls.maxDistance = 18;
+      controls.rotateSpeed = 0.8;
+    } else if (newIsTablet) {
+      camera.position.set(0, 1.5, 8.2);
+      controls.minDistance = 5.5;
+      controls.maxDistance = 16;
+      controls.rotateSpeed = 0.8;
+    } else {
+      camera.position.set(0, 1.5, 6.8);
+      controls.minDistance = 3.5;
+      controls.maxDistance = 14;
+      controls.rotateSpeed = 1.0;
+    }
+  }, 100);
+});
+
+// ================= 루프 =================
+const clock = new THREE.Clock();
+let hudTimer = 0, fractureTimer = 0, nextFracture = 0.18;
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.033, clock.getDelta());
+
+  if (crushing && hitDirNow) {
+    // 3초 이상 누르면 무조건 부수기 (작은 범위라도)
+    const elapsedTime = (performance.now() - crushStartTime) / 1000;
+    if (elapsedTime >= 3.0 && fractureTimer > 0.5) {
+      fractureTimer = 0;
+      fractureAt(hitDirNow, true);   // forceSmall=true로 강제 부수기
+    } else {
+      // 누르고 있으면 무작위 간격으로 새 균열이 우두둑
+      fractureTimer += dt;
+      if (fractureTimer > nextFracture) {
+        fractureTimer = 0;
+        nextFracture = rnd(0.1, 0.3);
+        const jittered = hitDirNow.clone()
+          .addScaledVector(new THREE.Vector3(rnd(-1, 1), rnd(-1, 1), rnd(-1, 1)), rnd(0, 0.12))
+          .normalize();
+        fractureAt(jittered);
+      }
+    }
+    // 이미 부서진 조각 갈기
+    let grinding = false;
+    for (const c of chunks.values()) {
+      const a = c.dir.angleTo(hitDirNow);
+      if (a < 0.38) { grindChunk(c, dt * gauss(a / 0.38)); grinding = true; }
+    }
+    if (grinding) {
+      paintP(hitDirNow, dt * 0.45, 0.2);
+      clayDirty = true;
+      softCrunch();
+    }
+    hudTimer += dt;
+    if (hudTimer > 0.3) { hudTimer = 0; updateHud(); }
+  }
+
+  // 조각 물리: 초기 속도로 톡 튀고, 주머니에 막혀 자리로 (탄성 진동 없음)
+  for (const c of chunks.values()) {
+    _v.copy(c.targetPos).sub(c.mesh.position);
+    c.vel.addScaledVector(_v, 60 * dt);
+    c.vel.multiplyScalar(Math.exp(-11 * dt));
+    c.mesh.position.addScaledVector(c.vel, dt);
+    c.mesh.quaternion.slerp(c.targetQ, 1 - Math.exp(-10 * dt));
+  }
+
+  if (clayDirty) updateClay();
+
+  const dentTarget = crushing ? R * 0.10 : 0;
+  bagDentV += (dentTarget - bagDent) * 28 * dt;
+  bagDentV *= Math.pow(0.002, dt);
+  bagDent += bagDentV * 6 * dt;
+  if (Math.abs(bagDent) > 1e-4 || Math.abs(bagDentV) > 1e-4 || bagPermDirty) {
+    updateBag();
+    bagPermDirty = false;
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+initBase();
+initShell();
+buildBall();
+animate();
+</script>
+</body>
+</html>
