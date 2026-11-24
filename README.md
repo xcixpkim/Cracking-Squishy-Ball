@@ -38,7 +38,7 @@ Three.js와 Web Audio API를 활용하여 3D 렌더링, 보로노이 분할 로�
 ## 설치 및 실행
 
 ### GitHub Pages
-https://xcixcode.github.io/Cracking-Squishy-Ball/
+https://xcixpkim.github.io/Cracking-Squishy-Ball/
 
 ### 로컬에서 실행
 1. `index.html` 파일을 다운로드하거나 복사합니다.
